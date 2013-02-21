@@ -1,0 +1,356 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#define BUCKETS 100
+
+typedef struct Node node;
+
+struct Node {
+  char *item;  
+  node *next;
+};
+
+void tearDown(node **table);
+node **makeDictionary();
+void insert(node **table, node *node);
+int toHash(char* str, int buckets);
+int isAlpha(char str);
+void anagram_mode(node **dict);
+void crossword_mode(node **dict);
+void sort(char *a);
+void swap(char *a, char *b);
+char *trim(char *str);
+
+void main(int argc, char *argv[]) {
+  int cross=0, ana=0;
+  char q[2];
+  
+  node **dict = makeDictionary();
+
+  if (argc > 1) {
+    cross = !(strcmp(argv[1],"-c"));
+    ana = !(strcmp(argv[1],"-a"));
+  }
+
+  if (cross) {
+    crossword_mode(dict);
+  }
+
+  if (ana) {
+    anagram_mode(dict);  
+  }
+
+  tearDown(dict);
+  free(dict);
+  return;
+}
+
+/*
+ * Function that reads the values in the dictionary into a HashTable of size BUCKETS (defined by constant above)
+ */
+node **makeDictionary() {
+  node **hashTable = (node **) malloc(BUCKETS * sizeof(node*));
+  int i = 0;
+  while (i < BUCKETS) {
+    hashTable[i] = NULL;
+    i++;
+  }
+
+  FILE* dict = fopen("/usr/share/dict/american", "r"); 
+  if(dict == NULL) {
+    return;
+  };
+
+  char word[128];
+  while(fgets(word, sizeof(word), dict) != NULL) {
+    char *wordp = (char *) malloc((strlen(word) * sizeof(char))+1);
+    strcpy(wordp, word);
+    wordp = trim(wordp);
+    node *thisNode = (node *) malloc(sizeof(node));
+    thisNode -> item = wordp;
+    int hash = toHash(wordp, BUCKETS);
+    insert(&hashTable[hash], thisNode);
+  }
+  return hashTable;
+}
+
+/*
+ * Function to insert a word into the hashtable, insertion is always at 
+ * the head and simply cascades the rest of the list down
+ */
+void insert(node **head, node *thisNode) {
+  
+  if (head == NULL) {
+    *head = thisNode;
+  }
+  else {
+    thisNode -> next = *head;
+    *head = thisNode;
+  }
+
+}
+
+/*
+ * Function that walks through a dictionary and tears it down 
+ * (Note you must free dictionary itself outside of function)
+ */
+void tearDown(node **table) {
+  int i = 0;
+  node *current, *old;
+
+  while (i < BUCKETS) {
+    current = table[i];
+
+    if (!(current == NULL)) {
+      while (current -> next != NULL) {
+	old = current;
+	free(current -> item); //free word
+	current = current -> next;
+	free(old); //free node
+      }
+    }
+    free(current -> item);
+    free(current);
+    i++;
+  }
+}
+
+
+/*
+ * Function which hashes a string given a pointer to the
+ * string and a number of buckets. We only hash legal
+ * alphabetical characters which leads to the somewhat
+ * non-intuitive fact that 'bar' and 'ba'r' are stored
+ * in the same bucket ...
+ */
+int toHash(char *str, int buckets) {
+  int hash = 0;
+
+  while (*str != '\0') {
+    // We only hash
+    if (isAlpha(*str)) {
+      char thisChar = *(str); //Give me the character
+
+      if (thisChar > 96) {
+	thisChar -= 32;
+      }
+      hash += (thisChar - 64);
+    }
+    str += 1;
+  }
+  return (hash % buckets);
+}
+
+/*
+ * Function that returns true (1) if a character is
+ * a legal alphabetical character and (0) if not
+ */
+int isAlpha(char str) {
+  return ((str > 64 && str < 91) || (str > 96 && str < 123));
+}
+
+int myStrcmp(char *a, char *b) {
+  
+  while (*a != '\0' && *b != '\0') {
+    char thisChar = *(a);
+    char thatChar = *(b);
+
+    if (thisChar > 96)
+      thisChar -= 32;
+    if (thatChar > 96)
+      thatChar -= 32;
+		    
+
+    if (thisChar != thatChar)
+      return 1;
+    a += 1;
+    b += 1;
+  }
+  return 0;
+};
+
+
+
+/*
+ * Runs a single iteration of anagram mode
+ */
+void anagram_mode(node **dict) {
+  char input[128];
+  int found = 0;
+  printf("Please enter a word (or q to quit): ");
+  scanf("%s128", input);
+
+  if (!(strcmp(input, "q")))
+    return;
+
+  char *inputp = malloc(sizeof(char) * strlen(input) + 1);
+  char *item = malloc(sizeof(char) * strlen(input) + 1);
+
+  strcpy(inputp, input);
+  strcpy(item, input);
+
+  sort(inputp);
+  int hash = toHash(inputp, BUCKETS);
+  node *current = dict[hash];
+
+  while (current != NULL) {
+    char *temp = malloc(sizeof(char) * strlen(current -> item) + 1);
+    strcpy(temp, current -> item);
+    sort(temp);
+
+    if (strlen(temp) == strlen(inputp)) {
+       if (!(myStrcmp(temp, inputp))) {
+	 if ((strcmp(current -> item, item))) {
+	   found = 1;
+	   printf("%s\n", current -> item);
+	 }
+      }
+    }
+
+    free(temp);
+    current = current -> next;
+  }
+
+  if (!(found)) {
+    printf("No anagrams found!\n");
+  }
+  free(item);
+  free(inputp);
+  anagram_mode(dict);
+}
+    
+
+/*
+ * Runs a single iteration of crossword mode
+ */
+void crossword_mode(node **dict) {
+  int i;
+  int index = 0;
+  char input[128];
+  char c;
+  int found = 0;
+  int good = 0;
+
+  printf("Please enter word to search for permutations of (or q to quit): ");
+  scanf("%128s", input);  
+  if (!(strcmp(input, "q")))
+    return;
+
+  printf("Please enter the character you'd like to keep fixed: ");
+  scanf("\n%1c", &c);
+
+
+  for (i=0; i<strlen(input); i++) {
+    if (input[i]==c)
+      good = 1;
+  };
+    
+  if (!(good)) {
+    printf("Invalid Character\n");
+    crossword_mode(dict);
+  };
+
+  printf("Please enter the index (position - 1) of the letter you want to keep fixed: ");
+  scanf("\n%1d", &index);
+
+  if (index < 0 || index > strlen(input)-1) {
+    printf("Invalid index\n");
+    crossword_mode(dict);
+  };
+
+  
+  char *inputp = malloc(sizeof(char) * strlen(input) + 1);
+  char *inputcopy = malloc(sizeof(char) * strlen(input) + 1);
+  strcpy(inputp, input);
+  // Keep an unsorted copy to check for item @ index
+  strcpy(inputcopy, input);
+
+  sort(inputp);
+  int hash = toHash(inputp, BUCKETS);
+  node *current = dict[hash];
+
+  while (current != NULL) {
+    char *temp = malloc(sizeof(char) * strlen(current -> item) + 1);
+    strcpy(temp, current -> item);
+    sort(temp);
+
+    if (strlen(temp) == strlen(inputp)) {
+      if (!(myStrcmp(temp, inputp)) && (c == (current -> item)[index])) {
+	if (strcmp(current -> item, inputcopy)) {
+	  found = 1;
+	  printf("%s\n", current -> item);
+	}
+      }
+    }
+    free(temp);
+    current = current -> next;
+  }
+
+  if (!(found)) {
+    printf("No crossword solutions found!\n");
+  }
+
+  free(inputp);
+  free(inputcopy);
+  
+  crossword_mode(dict);
+}
+
+ /*
+  * Sorts a mutable string pointed to by char *a using bubblesort
+  */
+void sort(char *a) {
+  int flag;
+  char *b, *head = a;
+  if (*a == '\0')
+    return;
+  do {
+    flag = 0;
+    while (!(*(a+1) == '\0')) {
+      b = a+1;
+      if (*a > *b) {
+	swap(a, b);
+	flag++;
+      }
+      a = a+1;
+    }
+    a = head;
+  } while (flag > 0);
+  
+}
+
+/*
+ * This function takes in a char pointer (presumably referring to a mutable
+ * string) and removes any leading or trailing whitespace.
+ * http://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way
+ * author: Chris Murphy
+ */
+char *trim(char *str)
+{
+  char *end;
+
+  // Trim leading space
+  while(isspace(*str)) str++;
+
+  if(*str == 0)  
+    return str;
+
+  // Trim trailing space
+  end = str + strlen(str) - 1;
+  while(end > str && isspace(*end)) end--;
+
+  // Write new null terminator
+  *(end+1) = 0;
+
+  return str;
+}
+
+/*
+ * Swaps two characters in place
+ */
+void swap(char *a, char *b) {
+  char temp;
+  temp = *b;
+  *b = *a;
+  *a = temp;
+}
